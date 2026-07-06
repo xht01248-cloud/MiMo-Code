@@ -285,6 +285,8 @@ export const dict = {
   "tui.skill.arxiv.description": "Busca, cita, descarga y sigue artículos de arXiv",
   "tui.skill.skill-creator.description": "Crea, revisa y mejora skills de agente",
   "tui.skill.research-paper-writing.description": "Redacta, pule y critica artículos académicos con perspectiva de revisor",
+  "tui.skill.design-blueprint.description":
+    "Producir un plano de diseño (DESIGN.md + Decision Trace) antes de crear cualquier mockup",
 
   // Language switching
   "tui.command.language.switch.title": "Cambiar idioma",

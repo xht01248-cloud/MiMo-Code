@@ -198,6 +198,7 @@ export const dict = {
   "tui.skill.arxiv.description": "搜尋、引用、下載與追蹤 arXiv 論文",
   "tui.skill.skill-creator.description": "建立、審查與改進 Agent 技能",
   "tui.skill.research-paper-writing.description": "撰寫、潤色學術論文，並以審稿人視角提前把關",
+  "tui.skill.design-blueprint.description": "先出設計藍圖（DESIGN.md + 決策軌跡）再動手做視覺",
 
   // Language switching
   "tui.command.language.switch.title": "切換語言",

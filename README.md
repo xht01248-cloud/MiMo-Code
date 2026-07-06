@@ -162,6 +162,7 @@ Skills are reusable instruction sets that teach agents how to handle specific ta
 | `pdf-official` | Produce, read, fill, and transform PDF files |
 | `pptx-official` | Author and manipulate PowerPoint (.pptx) decks |
 | `xlsx-official` | Build, clean, and transform spreadsheets (.xlsx/.csv) |
+| `design-blueprint` | Produce a design blueprint (DESIGN.md + Decision Trace) before mocking up visuals |
 | `frontend-design` | Visual design guidance for UI work |
 | `html-to-video-pipeline` | HTML-to-MP4 rendering via headless browser + ffmpeg |
 | `research-paper-writing` | Write and polish academic papers (ML/CV/NLP style) |

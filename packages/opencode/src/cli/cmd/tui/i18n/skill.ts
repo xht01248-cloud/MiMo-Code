@@ -11,6 +11,7 @@ const BUILTIN = new Set([
   "arxiv",
   "skill-creator",
   "research-paper-writing",
+  "design-blueprint",
 ])
 
 export function skillDescription(
