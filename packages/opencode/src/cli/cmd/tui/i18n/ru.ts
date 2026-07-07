@@ -290,8 +290,8 @@ export const dict = {
   "tui.skill.research-paper-writing.description": "Написание, полировка и рецензирование научных статей",
   "tui.skill.design-blueprint.description":
     "Создать проектную спецификацию (DESIGN.md + Decision Trace) до макетов",
-  "tui.skill.auto-research.description":
-    "Автономные исследовательские workflow — обзоры литературы, циклы экспериментов, воспроизведение статей",
+  "tui.skill.super-research.description":
+    "Автономные исследования — эксперименты, обзоры, количественный анализ, бенчмарки, RCA, абляция, воспроизведение и написание статей",
   "tui.skill.deep-research.description":
     "Глубокое многоисточниковое исследование с перекрёстной проверкой и цитированием",
   "tui.skill.modern-python-toolchain.description":

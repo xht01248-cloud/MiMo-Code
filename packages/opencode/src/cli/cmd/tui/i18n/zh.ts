@@ -199,7 +199,7 @@ export const dict = {
   "tui.skill.skill-creator.description": "创建、审查与改进 Agent 技能",
   "tui.skill.research-paper-writing.description": "撰写、润色学术论文，并以审稿人视角提前把关",
   "tui.skill.design-blueprint.description": "先出设计蓝图（DESIGN.md + 决策轨迹）再动手做视觉",
-  "tui.skill.auto-research.description": "自主研究工作流——文献综述、实验循环、论文复现",
+  "tui.skill.super-research.description": "自主研究——实验循环、主题调研、量化分析、对比评测、根因排查、消融实验、复现论文、写论文",
   "tui.skill.deep-research.description": "深度多源调研，交叉验证并生成引用报告",
   "tui.skill.modern-python-toolchain.description": "现代 Python 项目配置：uv、ruff、pyright",
   "tui.skill.compose:ask.description": "向用户请求决策或澄清",
