@@ -2742,17 +2742,38 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             continue
           }
 
-          // Memory flush nudge at high context pressure
+          // Memory flush nudge at high context pressure.
+          //
+          // Purpose: at high context fill, the session may soon checkpoint and
+          // discard old context, so remind the model to externalize durable
+          // learnings to memory BEFORE that happens. This is a *save-your-work*
+          // reminder, NOT a signal to wrap up.
+          //
+          // Two failure modes this guards against (both observed in prod):
+          //   1. Wording that reads as "we're about to reset — wind down" made
+          //      models prematurely end their turn and hand control back to the
+          //      user mid-task. The text below is explicit: persist memory, then
+          //      KEEP GOING; do not end the turn.
+          //   2. Re-injecting the nudge on every user turn while pressure stays
+          //      high turned a one-time heads-up into per-turn nagging. We now
+          //      dedup across the recent conversation window, not just the
+          //      current user message.
           if (lastFinished && lastFinished.summary !== true && model) {
             const cfg = yield* config.get()
             const pressure = pressureLevel({ cfg, tokens: lastFinished.tokens, model })
             if (pressure >= 2) {
-              // Inject nudge as a synthetic text part on the last user message
+              // De-bounce: skip if a nudge was already injected anywhere in the
+              // recent tail (last 8 messages). A checkpoint/rebuild clears the
+              // tail, so a fresh high-pressure episode after a reset can nudge
+              // again — but a sustained high-pressure stretch nudges only once.
+              const NUDGE_MARKER = "Context is filling up"
+              const NUDGE_LOOKBACK = 8
+              const recentTail = msgs.slice(-NUDGE_LOOKBACK)
+              const alreadyNudged = recentTail.some((m) =>
+                m.parts.some((p) => p.type === "text" && p.text?.includes(NUDGE_MARKER)),
+              )
               const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
-              if (
-                lastUserMsg &&
-                !lastUserMsg.parts.some((p) => p.type === "text" && p.text?.includes("Context is filling up"))
-              ) {
+              if (lastUserMsg && !alreadyNudged) {
                 lastUserMsg.parts.push({
                   id: PartID.ascending(),
                   messageID: lastUserMsg.info.id,
@@ -2762,8 +2783,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   text: [
                     "<system-reminder>",
                     `Context is filling up (${pressure >= 3 ? ">85%" : ">70%"}).`,
-                    "If you have important learnings or decisions from this session,",
-                    "consider writing them to memory now before context may be reset.",
+                    "If you have important learnings or decisions from this session that are",
+                    "not yet in memory, write them now (they may be summarized on the next",
+                    "checkpoint). This is a save-your-work reminder only.",
+                    "IMPORTANT: After writing to memory, CONTINUE with the current task in the",
+                    "same turn. Do NOT stop, wrap up, or hand control back to the user because",
+                    "of this reminder — only finish when the actual work is done.",
                     "</system-reminder>",
                   ].join("\n"),
                 })
