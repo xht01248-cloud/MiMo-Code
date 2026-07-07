@@ -2762,14 +2762,23 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             const cfg = yield* config.get()
             const pressure = pressureLevel({ cfg, tokens: lastFinished.tokens, model })
             if (pressure >= 2) {
-              // De-bounce: skip if a nudge was already injected anywhere in the
-              // recent tail (last 8 messages). A checkpoint/rebuild clears the
-              // tail, so a fresh high-pressure episode after a reset can nudge
-              // again — but a sustained high-pressure stretch nudges only once.
+              // De-bounce: nudge at most once per high-pressure *episode*, where
+              // an episode is the message window since the last checkpoint
+              // boundary. Keying off the checkpoint boundary (not a fixed
+              // message count) is deliberate: a single sustained high-pressure
+              // turn can emit many tool-call steps — each its own message — so a
+              // fixed-size tail would let the already-nudged message slide out of
+              // the window and re-fire mid-turn. The boundary only advances when
+              // a checkpoint/rebuild actually discards context, which is exactly
+              // when a fresh nudge becomes useful again. Before the first
+              // checkpoint the boundary is undefined, so we scan all messages.
               const NUDGE_MARKER = "Context is filling up"
-              const NUDGE_LOOKBACK = 8
-              const recentTail = msgs.slice(-NUDGE_LOOKBACK)
-              const alreadyNudged = recentTail.some((m) =>
+              const boundaryID = yield* checkpoint
+                .lastBoundary(sessionID)
+                .pipe(Effect.catch(() => Effect.succeed(undefined)))
+              const boundaryIdx = boundaryID ? msgs.findIndex((m) => m.info.id === boundaryID) : -1
+              const episode = boundaryIdx >= 0 ? msgs.slice(boundaryIdx) : msgs
+              const alreadyNudged = episode.some((m) =>
                 m.parts.some((p) => p.type === "text" && p.text?.includes(NUDGE_MARKER)),
               )
               const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
