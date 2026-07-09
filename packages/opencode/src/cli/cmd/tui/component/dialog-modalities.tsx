@@ -10,7 +10,7 @@ import { useSync } from "@tui/context/sync"
 import { useLocal } from "@tui/context/local"
 import { useToast } from "../ui/toast"
 
-const MODALITIES = ["text", "image", "audio", "video", "pdf"] as const
+const MODALITIES = ["image", "audio", "video", "pdf"] as const
 type Modality = (typeof MODALITIES)[number]
 
 export function DialogModalities() {
@@ -28,7 +28,7 @@ export function DialogModalities() {
 
   const initialState = MODALITIES.reduce(
     (acc, m) => {
-      acc[m] = model?.capabilities?.input?.[m] ?? (m === "text")
+      acc[m] = model?.capabilities?.input?.[m] ?? false
       return acc
     },
     {} as Record<Modality, boolean>,
@@ -65,7 +65,7 @@ export function DialogModalities() {
 
   async function save() {
     if (!current) return
-    const input = MODALITIES.filter((m) => store[m])
+    const input = ["text" as const, ...MODALITIES.filter((m) => store[m])]
     const output = (["text", "audio", "image", "video", "pdf"] as const).filter(
       (m) => model?.capabilities?.output?.[m],
     )
