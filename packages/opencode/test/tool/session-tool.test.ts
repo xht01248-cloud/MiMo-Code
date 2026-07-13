@@ -671,10 +671,12 @@ describe("session tool", () => {
         )
         const progID = prog.metadata.sessionID!
 
-        // A stalled peer: running, but with an old last_turn_time far past the
-        // default staleness window → deriveLiveness reports stalled. Force status
-        // running, then age its last_turn_time via a direct row update (updateTurn
-        // would bump it to now; we need it OLD with turnCount unchanged).
+        // A stalled peer: running, having run at least one turn, but with an old
+        // last_turn_time far past the default staleness window → deriveLiveness
+        // reports stalled. Force status running and turn_count >= 1 (a
+        // not-yet-started child with turnCount 0 is exempt from the stall path),
+        // then age its last_turn_time via a direct row update (updateTurn would
+        // bump last_turn_time to now; we need it OLD while turn_count stays put).
         const stalled = yield* tool.execute(
           { operation: { action: "create", task: "wedged", mode: "build", title: "Wedged" } },
           ctx(parent.id),
@@ -685,7 +687,7 @@ describe("session tool", () => {
           Database.use((db) =>
             db
               .update(ActorRegistryTable)
-              .set({ last_turn_time: Date.now() - 10 * 60_000 })
+              .set({ last_turn_time: Date.now() - 10 * 60_000, turn_count: 1 })
               .where(and(eq(ActorRegistryTable.session_id, SessionID.make(stalledID)), eq(ActorRegistryTable.actor_id, stalledID)))
               .run(),
           ),

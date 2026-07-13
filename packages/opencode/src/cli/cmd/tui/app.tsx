@@ -381,17 +381,33 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   // can tell whether we were launched inside it (only relevant when the feature
   // is enabled).
   const [orchestratorDirPath, setOrchestratorDirPath] = createSignal<string | undefined>(undefined)
+  // `undefined` means "not resolved yet" (the async resolve below hasn't run) —
+  // indistinguishable from "resolved to nothing", which is why the -c effect
+  // must not treat undefined as an answer. This flag flips true once the resolve
+  // settles (success OR failure) so the -c effect knows the orchestrator-mode
+  // question has actually been answered.
+  const [orchestratorDirResolved, setOrchestratorDirResolved] = createSignal(false)
   onMount(() => {
     if (!Flag.MIMOCODE_EXPERIMENTAL_ORCHESTRATOR) return
     void orchestratorDir()
       .then(setOrchestratorDirPath)
       .catch(() => {})
+      .finally(() => setOrchestratorDirResolved(true))
   })
 
   let continued = false
   createEffect(() => {
     // When using -c, session list is loaded in blocking phase, so we can navigate at "partial"
     if (continued || sync.status === "loading" || !args.continue) return
+    // RACE GUARD: orchestratorDirPath() resolves asynchronously (onMount above).
+    // If sync reaches "partial" first, orchestratorDirPath() is still undefined
+    // and we'd wrongly skip the orchestrator branch, resume the persistent
+    // orchestrator session as a PLAIN build session, and latch continued=true —
+    // permanently, so the later resolve can never correct it. So when the
+    // feature is on, WAIT for the resolve to settle before deciding. Reading the
+    // signal keeps this effect subscribed, so it re-runs (and re-decides) the
+    // moment the path resolves.
+    if (Flag.MIMOCODE_EXPERIMENTAL_ORCHESTRATOR && !orchestratorDirResolved()) return
     // Resuming via -c inside the orchestrator workspace means the most-recent
     // root session IS the persistent orchestrator session. Enter Orchestrator
     // mode directly (mirrors -s landing in it) instead of resuming it as a

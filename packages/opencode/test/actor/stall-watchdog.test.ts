@@ -2,7 +2,7 @@ import { NodeFileSystem } from "@effect/platform-node"
 import { FetchHttpClient } from "effect/unstable/http"
 import { afterEach, describe, expect } from "bun:test"
 import { Effect, Layer } from "effect"
-import { eq, and } from "drizzle-orm"
+import { eq, and, sql } from "drizzle-orm"
 import { Agent as AgentSvc } from "../../src/agent/agent"
 import { Bus } from "../../src/bus"
 import { Command } from "../../src/command"
@@ -213,13 +213,16 @@ const parentInboxRows = (parentID: SessionID) =>
 
 // Backdate a peer's last_turn_time so deriveLiveness reads `stalled` on the next
 // scan WITHOUT advancing turn_count — exactly the wedged-child shape the watchdog
-// exists to catch. Keeps status pending/running so it stays in listActive().
+// exists to catch. turn_count is forced to >= 1 (the child has run at least one
+// turn, then wedged): a not-yet-started child (turnCount 0) is deliberately
+// exempt from the stall path, so a stalled row must have run once. Keeps status
+// pending/running so it stays in listActive().
 const backdateTurn = (sessionID: SessionID, actorID: string, agoMs: number) =>
   Effect.sync(() =>
     Database.use((db) =>
       db
         .update(ActorRegistryTable)
-        .set({ status: "running", last_turn_time: Date.now() - agoMs })
+        .set({ status: "running", last_turn_time: Date.now() - agoMs, turn_count: sql`max(${ActorRegistryTable.turn_count}, 1)` })
         .where(and(eq(ActorRegistryTable.session_id, sessionID), eq(ActorRegistryTable.actor_id, actorID)))
         .run(),
     ),

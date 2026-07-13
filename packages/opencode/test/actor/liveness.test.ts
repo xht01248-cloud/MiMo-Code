@@ -37,48 +37,76 @@ describe("deriveLiveness (T39 derivation rule)", () => {
   const now = 1_000_000
 
   test("running + recent turn (within window) → progressing", () => {
-    expect(deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 1_000 }, now)).toBe(
-      "progressing",
-    )
+    expect(
+      deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 1_000, turnCount: 1 }, now),
+    ).toBe("progressing")
   })
 
   test("running + turn older than the window → stalled", () => {
     expect(
-      deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - (DEFAULT_LIVENESS_STALL_MS + 1) }, now),
+      deriveLiveness(
+        { status: "running", lastOutcome: undefined, lastTurnTime: now - (DEFAULT_LIVENESS_STALL_MS + 1), turnCount: 1 },
+        now,
+      ),
     ).toBe("stalled")
   })
 
-  test("pending is treated as live and split by the same window", () => {
-    expect(deriveLiveness({ status: "pending", lastOutcome: undefined, lastTurnTime: now }, now)).toBe("progressing")
+  test("not-yet-started child (turnCount 0) is never stalled — slow first turn is not a stall", () => {
+    // last_turn_time is the spawn time; even far outside the window a child that
+    // has not completed a turn (queued behind the concurrency gate / cold-start)
+    // must read progressing, not stalled.
     expect(
-      deriveLiveness({ status: "pending", lastOutcome: undefined, lastTurnTime: now - 10 * 60_000 }, now),
+      deriveLiveness(
+        { status: "pending", lastOutcome: undefined, lastTurnTime: now - 10 * 60_000, turnCount: 0 },
+        now,
+      ),
+    ).toBe("progressing")
+    expect(
+      deriveLiveness(
+        { status: "running", lastOutcome: undefined, lastTurnTime: now - 10 * 60_000, turnCount: 0 },
+        now,
+      ),
+    ).toBe("progressing")
+  })
+
+  test("pending is treated as live and split by the same window (once it has run a turn)", () => {
+    expect(
+      deriveLiveness({ status: "pending", lastOutcome: undefined, lastTurnTime: now, turnCount: 1 }, now),
+    ).toBe("progressing")
+    expect(
+      deriveLiveness({ status: "pending", lastOutcome: undefined, lastTurnTime: now - 10 * 60_000, turnCount: 1 }, now),
     ).toBe("stalled")
   })
 
   test("exactly at the threshold boundary is still progressing (<= window)", () => {
     expect(
-      deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - DEFAULT_LIVENESS_STALL_MS }, now),
+      deriveLiveness(
+        { status: "running", lastOutcome: undefined, lastTurnTime: now - DEFAULT_LIVENESS_STALL_MS, turnCount: 1 },
+        now,
+      ),
     ).toBe("progressing")
   })
 
   test("custom stallMs overrides the default window", () => {
     // 5s-old turn: stalled under a 1s window, progressing under a 60s window.
-    expect(deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 5_000 }, now, 1_000)).toBe(
-      "stalled",
-    )
-    expect(deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 5_000 }, now, 60_000)).toBe(
-      "progressing",
-    )
+    expect(
+      deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 5_000, turnCount: 1 }, now, 1_000),
+    ).toBe("stalled")
+    expect(
+      deriveLiveness({ status: "running", lastOutcome: undefined, lastTurnTime: now - 5_000, turnCount: 1 }, now, 60_000),
+    ).toBe("progressing")
   })
 
   test("terminal outcomes come straight from lastOutcome regardless of turn age", () => {
-    expect(deriveLiveness({ status: "idle", lastOutcome: "success", lastTurnTime: 0 }, now)).toBe("success")
-    expect(deriveLiveness({ status: "idle", lastOutcome: "failure", lastTurnTime: 0 }, now)).toBe("failure")
-    expect(deriveLiveness({ status: "idle", lastOutcome: "cancelled", lastTurnTime: 0 }, now)).toBe("cancelled")
+    expect(deriveLiveness({ status: "idle", lastOutcome: "success", lastTurnTime: 0, turnCount: 1 }, now)).toBe("success")
+    expect(deriveLiveness({ status: "idle", lastOutcome: "failure", lastTurnTime: 0, turnCount: 1 }, now)).toBe("failure")
+    expect(deriveLiveness({ status: "idle", lastOutcome: "cancelled", lastTurnTime: 0, turnCount: 1 }, now)).toBe(
+      "cancelled",
+    )
   })
 
   test("idle with no outcome → idle", () => {
-    expect(deriveLiveness({ status: "idle", lastOutcome: undefined, lastTurnTime: 0 }, now)).toBe("idle")
+    expect(deriveLiveness({ status: "idle", lastOutcome: undefined, lastTurnTime: 0, turnCount: 0 }, now)).toBe("idle")
   })
 })
 
@@ -116,23 +144,42 @@ describe("ActorRegistry.liveness (T39 integration)", () => {
     })
   })
 
-  test("running row whose last turn is old + turnCount unchanged reads stalled", async () => {
+  test("running row whose last turn is old + has run a turn reads stalled", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await withRegistry(tmp.path, async (rt) => {
+      const child = await rt.runPromise(Session.Service.use((s) => s.create()))
+      await rt.runPromise(ActorRegistry.Service.use((reg) => register(reg, child.id)))
+      await rt.runPromise(ActorRegistry.Service.use((reg) => reg.updateStatus(child.id, child.id, { status: "running" })))
+      // Advance one turn so the row is no longer a not-yet-started child; its
+      // last_turn_time now dates from this updateTurn. With a 1ms staleness
+      // window and no further advance, elapsed real time flips it to stalled.
+      await rt.runPromise(ActorRegistry.Service.use((reg) => reg.updateTurn(child.id, child.id)))
+
+      await new Promise((r) => setTimeout(r, 5))
+      const before = await rt.runPromise(ActorRegistry.Service.use((reg) => reg.get(child.id, child.id)))
+      const found = await rt.runPromise(ActorRegistry.Service.use((reg) => reg.liveness(child.id, child.id, 1)))
+      expect(found!.liveness).toBe("stalled")
+      // turnCount advanced exactly once, then wedged.
+      expect(found!.actor.turnCount).toBe(1)
+      expect(found!.actor.lastTurnTime).toBe(before!.lastTurnTime)
+    })
+  })
+
+  test("not-yet-started row (turnCount 0) reads progressing even far past the window", async () => {
     await using tmp = await tmpdir({ git: true })
     await withRegistry(tmp.path, async (rt) => {
       const child = await rt.runPromise(Session.Service.use((s) => s.create()))
       await rt.runPromise(ActorRegistry.Service.use((reg) => register(reg, child.id)))
       await rt.runPromise(ActorRegistry.Service.use((reg) => reg.updateStatus(child.id, child.id, { status: "running" })))
 
-      // lastTurnTime is register/updateStatus's `now`; with a 1ms staleness
-      // window and no further updateTurn (turnCount stays 0), any elapsed real
-      // time flips it to stalled. Sleep a hair to guarantee age > 1ms.
+      // No updateTurn: last_turn_time is the spawn time, turnCount stays 0. Even
+      // with a 1ms staleness window (spawn time is now far outside it), a child
+      // that has not run once must NOT read stalled — this is the slow-start
+      // (queued / cold-start) false-positive guard.
       await new Promise((r) => setTimeout(r, 5))
-      const before = await rt.runPromise(ActorRegistry.Service.use((reg) => reg.get(child.id, child.id)))
       const found = await rt.runPromise(ActorRegistry.Service.use((reg) => reg.liveness(child.id, child.id, 1)))
-      expect(found!.liveness).toBe("stalled")
-      // turnCount never advanced.
       expect(found!.actor.turnCount).toBe(0)
-      expect(found!.actor.lastTurnTime).toBe(before!.lastTurnTime)
+      expect(found!.liveness).toBe("progressing")
     })
   })
 
