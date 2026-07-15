@@ -119,6 +119,17 @@ export type EventActorStuck = {
   }
 }
 
+export type EventActorStalled = {
+  type: "actor.stalled"
+  properties: {
+    sessionID: string
+    actorID: string
+    description: string
+    lastTurnTime: number
+    stalledDuration: number
+  }
+}
+
 export type EventWriterCachePerf = {
   type: "writer.cache_perf"
   properties: {
@@ -717,6 +728,36 @@ export type EventBashInteractiveReplied = {
   }
 }
 
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+      message?: string
+    }
+
+export type EventSessionStatus = {
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+}
+
+export type EventSessionIdle = {
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+
 export type EventVcsBranchUpdated = {
   type: "vcs.branch.updated"
   properties: {
@@ -780,36 +821,6 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
-  }
-}
-
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-      message?: string
-    }
-
-export type EventSessionStatus = {
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  type: "session.idle"
-  properties: {
-    sessionID: string
   }
 }
 
@@ -1521,6 +1532,7 @@ export type GlobalEvent = {
     | EventActorRegistered
     | EventActorStatus
     | EventActorStuck
+    | EventActorStalled
     | EventWriterCachePerf
     | EventInboxArrived
     | EventTaskCreated
@@ -1559,6 +1571,8 @@ export type GlobalEvent = {
     | EventSessionCwd
     | EventBashInteractiveAsked
     | EventBashInteractiveReplied
+    | EventSessionStatus
+    | EventSessionIdle
     | EventVcsBranchUpdated
     | EventMcpToolsChanged
     | EventMcpBrowserOpenFailed
@@ -1566,8 +1580,6 @@ export type GlobalEvent = {
     | EventWorktreeReady
     | EventWorktreeFailed
     | EventTodoUpdated
-    | EventSessionStatus
-    | EventSessionIdle
     | EventSessionGoal
     | EventSessionCompacted
     | EventPtyCreated
@@ -1917,15 +1929,9 @@ export type Config = {
    */
   $schema?: string
   logLevel?: LogLevel
-  /**
-   * Environment variables to inject into the mimocode process and its child processes (e.g. the bash tool). A variable already set in the real environment takes precedence — config values only apply when the variable is not already set. Supports {env:VAR} and {file:path} substitution.
-   */
-  env?: {
-    [key: string]: string
-  }
   server?: ServerConfig
   /**
-   * Command configuration, see https://opencode.ai/docs/commands
+   * Command configuration, see https://mimo.xiaomi.com/mimocode/commands
    */
   command?: {
     [key: string]: {
@@ -2038,7 +2044,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Agent configuration, see https://opencode.ai/docs/agents
+   * Agent configuration, see https://mimo.xiaomi.com/mimocode/agents
    */
   agent?: {
     plan?: AgentConfig
@@ -2720,6 +2726,7 @@ export type Event =
   | EventActorRegistered
   | EventActorStatus
   | EventActorStuck
+  | EventActorStalled
   | EventWriterCachePerf
   | EventInboxArrived
   | EventTaskCreated
@@ -2758,6 +2765,8 @@ export type Event =
   | EventSessionCwd
   | EventBashInteractiveAsked
   | EventBashInteractiveReplied
+  | EventSessionStatus
+  | EventSessionIdle
   | EventVcsBranchUpdated
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
@@ -2765,8 +2774,6 @@ export type Event =
   | EventWorktreeReady
   | EventWorktreeFailed
   | EventTodoUpdated
-  | EventSessionStatus
-  | EventSessionIdle
   | EventSessionGoal
   | EventSessionCompacted
   | EventPtyCreated
