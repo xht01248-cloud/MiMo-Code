@@ -4,6 +4,7 @@ import {
   skillSearchReminderForMessages,
   skillSearchReminderForSession,
 } from "../../src/session/skill-search-reminder"
+import { Flag } from "../../src/flag/flag"
 
 describe("skillSearchReminder", () => {
   test("prompts skill search on the first user query", () => {
@@ -24,21 +25,14 @@ describe("skillSearchReminder", () => {
     expect(reminder).not.toContain("MUST")
   })
 
-  test("describes semantic-change triggers for later queries", () => {
-    const reminder = skillSearchReminder({ previousUserAt: 1_000, currentUserAt: 2_000 })
-
-    expect(reminder).toContain("do not call skill_search")
-    expect(reminder).toContain("continuation, modification, or retry")
-    expect(reminder).toContain("output type")
-    expect(reminder).toContain("primary action")
-    expect(reminder).toContain("business object")
-    expect(reminder).toContain("required capability")
+  test("does not prompt skill search before twelve hours", () => {
+    expect(skillSearchReminder({ previousUserAt: 1_000, currentUserAt: 43_200_999 })).toBeUndefined()
   })
 
-  test("defaults to search after two hours unless the current work is explicitly referenced", () => {
-    const reminder = skillSearchReminder({ previousUserAt: 1_000, currentUserAt: 7_201_001 })
+  test("defaults to search at twelve hours unless the current work is explicitly referenced", () => {
+    const reminder = skillSearchReminder({ previousUserAt: 1_000, currentUserAt: 43_201_000 })
 
-    expect(reminder).toContain("more than 2 hours")
+    expect(reminder).toContain("at least 12 hours")
     expect(reminder).toContain("default: call skill_search")
     expect(reminder).not.toContain("MUST")
     expect(reminder).toContain("unless the user explicitly references the current task or current artifact")
@@ -70,21 +64,48 @@ describe("skillSearchReminder", () => {
       },
     ]
 
-    expect(
-      skillSearchReminderForSession({ session: {}, agent: { name: "build", mode: "primary" }, messages }),
-    ).toContain("first user query")
-    expect(
-      skillSearchReminderForSession({ session: {}, agent: { name: "compose", mode: "primary" }, messages }),
-    ).toBeUndefined()
-    expect(
-      skillSearchReminderForSession({ session: {}, agent: { name: "explore", mode: "subagent" }, messages }),
-    ).toBeUndefined()
-    expect(
-      skillSearchReminderForSession({
-        session: { parentID: "parent" },
-        agent: { name: "build", mode: "primary" },
-        messages,
-      }),
-    ).toBeUndefined()
+    const enabled = Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER
+    Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER = true
+    try {
+      expect(
+        skillSearchReminderForSession({ session: {}, agent: { name: "build", mode: "primary" }, messages }),
+      ).toContain("first user query")
+      expect(
+        skillSearchReminderForSession({ session: {}, agent: { name: "compose", mode: "primary" }, messages }),
+      ).toBeUndefined()
+      expect(
+        skillSearchReminderForSession({ session: {}, agent: { name: "explore", mode: "subagent" }, messages }),
+      ).toBeUndefined()
+      expect(
+        skillSearchReminderForSession({
+          session: { parentID: "parent" },
+          agent: { name: "build", mode: "primary" },
+          messages,
+        }),
+      ).toBeUndefined()
+    } finally {
+      Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER = enabled
+    }
+  })
+
+  test("does not inject when the reminder flag is disabled", () => {
+    const enabled = Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER
+    Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER = false
+    try {
+      expect(
+        skillSearchReminderForSession({
+          session: {},
+          agent: { name: "build", mode: "primary" },
+          messages: [
+            {
+              info: { role: "user", id: "user-1", time: { created: 1_000 } },
+              parts: [{ type: "text", text: "Analyze a CSV" }],
+            },
+          ],
+        }),
+      ).toBeUndefined()
+    } finally {
+      Flag.MIMOCODE_ENABLE_SKILL_SEARCH_REMINDER = enabled
+    }
   })
 })
